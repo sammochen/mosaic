@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include <iostream>
+#include <queue>
 #include <vector>
 
 #include "stb_image.h"
@@ -125,11 +126,56 @@ ImageArray kMeans(const ImageArray &imageArray, int k, int iterations) {
     return result;
 }
 
+ImageArray voronoi(const ImageArray &imageArray, int k) {
+    const int height = imageArray.size(), width = imageArray[0].size();
+
+    // generate points
+    vector<vector<int>> points(k);
+    for (int i = 0; i < k; i++) {
+        points[i] = {rand() % height, rand() % width};
+    }
+
+    // multi-source bfs
+    // keeps track of the parent of each pixel
+    vector<vector<int>> parent(height, vector<int>(width, -1));
+    std::queue<std::pair<int, int>> Q;
+    for (int p = 0; p < points.size(); p++) {
+        const auto &point = points[p];
+        Q.push({point[0], point[1]});
+        parent[point[0]][point[1]] = p;
+    }
+
+    const vector<int> di = {0, 0, 1, -1}, dj = {-1, 1, 0, 0};
+    while (Q.size()) {
+        const auto at = Q.front();
+        Q.pop();
+
+        for (int d = 0; d < 4; d++) {
+            const int ii = at.first + di[d], jj = at.second + dj[d];
+            if (ii < 0 || ii >= height || jj < 0 || jj >= width) continue;
+            if (parent[ii][jj] != -1) continue;
+            parent[ii][jj] = parent[at.first][at.second];
+            Q.push({ii, jj});
+        }
+    }
+
+    auto result = imageArray;
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            const int ind = parent[i][j];
+            result[i][j] = imageArray[points[ind][0]][points[ind][1]];
+        }
+    }
+    return result;
+}
+
 int main() {
+    srand(time(NULL));
+
     // Reading image
     printf("Reading image...\n");
     int width, height, channels;
-    ImageData inputImageData = stbi_load("img/interfac.jpg", &width, &height, &channels, CHANNELS);
+    ImageData inputImageData = stbi_load("img/interfac.jpeg", &width, &height, &channels, CHANNELS);
     if (!inputImageData) {
         throw std::invalid_argument("Error loading image");
     }
@@ -138,8 +184,9 @@ int main() {
     stbi_image_free(inputImageData);
 
     printf("Processing image...\n");
-    int colors = 9;
-    auto outputImageArray = kMeans(inputImageArray, colors, colors + 10);
+    int colors = 10000;
+    // auto outputImageArray = kMeans(inputImageArray, colors, colors + 10);
+    auto outputImageArray = voronoi(inputImageArray, colors);
 
     // Writing image
     printf("Writing image...\n");
