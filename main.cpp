@@ -169,13 +169,21 @@ ImageArray voronoi(const ImageArray &imageArray, int k) {
     return result;
 }
 
-int main() {
+int main(int argc, char **argv) {
+    if (argc != 3) {
+        printf("Invalid arguments. Usage: ./ImageProcessing [path/to/input] [path/to/output]\n");
+        return 1;
+    }
+
+    const char *sourcePath = argv[1];
+    const char *targetPath = argv[2];
+
     srand(time(NULL));
 
     // Reading image
     printf("Reading image...\n");
     int width, height, channels;
-    ImageData inputImageData = stbi_load("img/interfac.jpeg", &width, &height, &channels, CHANNELS);
+    ImageData inputImageData = stbi_load(sourcePath, &width, &height, &channels, CHANNELS);
     if (!inputImageData) {
         throw std::invalid_argument("Error loading image");
     }
@@ -191,7 +199,7 @@ int main() {
     // Writing image
     printf("Writing image...\n");
     auto outputImageData = toImageData(outputImageArray);
-    stbi_write_png("output.jpg", width, height, 3, outputImageData, width * 3);
+    stbi_write_png(targetPath, width, height, CHANNELS, outputImageData, width * CHANNELS);
     free(outputImageData);
     return 0;
 }

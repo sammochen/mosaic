@@ -2,3 +2,5 @@
 .vscode/
 img/
 output*
+build/
+stb/
