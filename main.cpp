@@ -10,7 +10,6 @@
 #include "stb_image.h"
 #include "stb_image_write.h"
 #include "types.hpp"
-#include "util.hpp"
 
 const int CHANNELS = 3;
 
@@ -45,14 +44,12 @@ ImageData toImageData(const ImageArray &imageArray) {
 /**
  * kMeans accepts a vector of colors and finds a suitable representation using at most k colors
  */
-std::vector<Color> kMeans(const std::vector<Color> &colors, int k, int iterations) {
+std::vector<Color> kMeans(const std::vector<Color> &colors, int numColors, int iterations) {
     const int n = colors.size();
     std::vector<int> clusterId(n, 0);               // id of ith color
     std::vector<Color> clusterColor = {{0, 0, 0}};  // color of kth cluster
 
     for (int it = 0; it < iterations; it++) {
-        printf("it: %d colors: %d\n", it, (int)clusterColor.size());
-
         // choose closest cluster
         std::vector<std::vector<int>> sum(clusterColor.size(), std::vector<int>(3));  // rgb sum
         std::vector<int> count(clusterColor.size());
@@ -99,21 +96,18 @@ std::vector<Color> kMeans(const std::vector<Color> &colors, int k, int iteration
             }
         }
 
-        // If there are not enough cluster colors, add the currently worst represented color
-        if (clusterColor.size() < k) {
-            clusterColor.push_back(colors[worstI]);
+        if (it < iterations - 100 && rand() % 10 == 0) {
+            for (int c = count.size() - 1; c >= 0; c--) {
+                if (count[c] * 1000 <= n) {
+                    clusterColor.erase(clusterColor.begin() + c);
+                    printf("%d Deleting: %d\n", it, c);
+                }
+            }
         }
 
-        // At random, delete the least saturated color
-        if (rand() % 10 == 0 && clusterColor.size() > 1 && it != iterations - 1) {
-            int lowestInd = std::min_element(clusterColor.begin(), clusterColor.end(),
-                                             [](const auto &a, const auto &b) {
-                                                 auto ha = getHSL(a.r, a.g, a.b);
-                                                 auto hb = getHSL(b.r, b.g, b.b);
-                                                 return ha[1] < hb[1];
-                                             }) -
-                            clusterColor.begin();
-            clusterColor.erase(clusterColor.begin() + lowestInd);
+        // If there are not enough cluster colors, add the currently worst represented color
+        if (clusterColor.size() < numColors) {
+            clusterColor.push_back(colors[worstI]);
         }
     }
 
@@ -124,12 +118,12 @@ std::vector<Color> kMeans(const std::vector<Color> &colors, int k, int iteration
     return result;
 }
 
-ImageArray voronoi(const ImageArray &imageArray, int k) {
+ImageArray voronoi(const ImageArray &imageArray, const int numBlocks, const int numColors) {
     const int height = imageArray.size(), width = imageArray[0].size();
 
     // generate points
-    std::vector<std::vector<int>> points(k);
-    for (int i = 0; i < k; i++) {
+    std::vector<std::vector<int>> points(numBlocks);
+    for (int i = 0; i < numBlocks; i++) {
         points[i] = {rand() % height, rand() % width};
     }
 
@@ -162,26 +156,44 @@ ImageArray voronoi(const ImageArray &imageArray, int k) {
         sourceColors.push_back(imageArray[points[p][0]][points[p][1]]);
     }
 
-    const auto kMeansColors = kMeans(sourceColors, 20, 1000);
+    const auto kMeansColors = kMeans(sourceColors, numColors, 1000);
     auto result = imageArray;
+
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            result[i][j] = kMeansColors[parent[i][j]];
+            bool colorBorder = 0;
+            bool cellBorder = 0;
+
+            for (int d = 0; d < 4; d++) {
+                const int ii = i + di[d], jj = j + dj[d];
+                if (ii < 0 || ii >= height || jj < 0 || jj >= width) continue;
+                if (kMeansColors[parent[ii][jj]] != kMeansColors[parent[i][j]]) colorBorder = true;
+                if (parent[ii][jj] != parent[i][j]) cellBorder = true;
+            }
+            if (cellBorder)
+                result[i][j] = {0, 0, 0};
+            else
+                result[i][j] = kMeansColors[parent[i][j]];
         }
     }
+
     return result;
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        printf("Invalid arguments. Usage: ./ImageProcessing [path/to/input] [path/to/output]\n");
+    if (argc != 5) {
+        printf(
+            "Invalid arguments. Usage: ./ImageProcessing path/to/input path/to/output numBlocks "
+            "numColors\n");
         return 1;
     }
 
     const char *sourcePath = argv[1];
     const char *targetPath = argv[2];
+    const int numBlocks = atoi(argv[3]);
+    const int numColors = atoi(argv[4]);
 
-    srand(time(NULL));
+    srand(100);  // srand(time(NULL)); if random
 
     // Reading image
     printf("Reading image...\n");
@@ -195,8 +207,7 @@ int main(int argc, char **argv) {
     stbi_image_free(inputImageData);
 
     printf("Processing image...\n");
-    int numPoints = 10000;
-    auto outputImageArray = voronoi(inputImageArray, numPoints);
+    auto outputImageArray = voronoi(inputImageArray, numBlocks, numColors);
 
     // Writing image
     printf("Writing image...\n");

@@ -14,6 +14,10 @@ struct Color {
         int db = abs(b - (int)color.b);
         return dr * dr + dg * dg + db * db;
     }
+
+    bool operator!=(const Color &color) const {
+        return r != color.r || g != color.g || b != color.b;
+    }
 };
 
 using ImageArray = std::vector<std::vector<Color>>;
