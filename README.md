@@ -2,6 +2,13 @@
 
 Create mosaics from images :)
 
+<div>
+<img src="https://github.com/sammochen/mosaic/blob/main/assets/original.jpeg" alt="original" width="400"/>
+<img src="https://github.com/sammochen/mosaic/blob/main/assets/output.jpg" alt="original" width="400"/>
+</div>
+
+*Config: `numSpaces=5000`, `numColors=20`*
+
 ## Usage
 
 Run:
