@@ -1,7 +1,6 @@
 *.out
 .vscode/
 img/
-output*
 build/
 stb/
 final/

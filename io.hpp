@@ -9,7 +9,10 @@
 
 #include <cassert>
 #include <stdexcept>
+#include <vector>
 
+#include "color.hpp"
+#include "image.hpp"
 #include "stb_image.h"
 #include "stb_image_write.h"
 
