@@ -9,26 +9,13 @@
 
 #include "stb_image.h"
 #include "stb_image_write.h"
-
-struct Color {
-    uint8_t r, g, b;
-
-    int dist(const Color &color) const {
-        int dr = abs(r - (int)color.r);
-        int dg = abs(g - (int)color.g);
-        int db = abs(b - (int)color.b);
-        return dr + dg + db;
-    }
-};
-
-using std::vector;
-using ImageArray = vector<vector<Color>>;
-using ImageData = uint8_t *;
+#include "types.hpp"
+#include "util.hpp"
 
 const int CHANNELS = 3;
 
 ImageArray toImageArray(const ImageData &imageData, const int width, const int height) {
-    vector<vector<Color>> imageArray(height, vector<Color>(width));
+    std::vector<std::vector<Color>> imageArray(height, std::vector<Color>(width));
     int ind = 0;
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
@@ -55,73 +42,84 @@ ImageData toImageData(const ImageArray &imageArray) {
     return imageData;
 }
 
-ImageArray kMeans(const ImageArray &imageArray, int k, int iterations) {
-    const int height = imageArray.size(), width = imageArray[0].size();
-    vector<vector<int>> clusterId(height, vector<int>(width, 0));  // -1 is for not assigned
-    vector<Color> clusterColor = {{0, 0, 0}};                      // color of kth cluster
+/**
+ * kMeans accepts a vector of colors and finds a suitable representation using at most k colors
+ */
+std::vector<Color> kMeans(const std::vector<Color> &colors, int k, int iterations) {
+    const int n = colors.size();
+    std::vector<int> clusterId(n, 0);               // id of ith color
+    std::vector<Color> clusterColor = {{0, 0, 0}};  // color of kth cluster
 
-    // iterative?
     for (int it = 0; it < iterations; it++) {
         printf("it: %d colors: %d\n", it, (int)clusterColor.size());
 
         // choose closest cluster
-        vector<vector<int>> sum(clusterColor.size(), vector<int>(3));  // rgb sum
-        vector<int> count(clusterColor.size());
+        std::vector<std::vector<int>> sum(clusterColor.size(), std::vector<int>(3));  // rgb sum
+        std::vector<int> count(clusterColor.size());
 
         // find the worst-represented cell
         int worst = -1e9;
-        int worstI = -1, worstJ = -1;
+        int worstI = -1;
 
-        for (int i = 0; i < height; i++) {
-            for (int j = 0; j < width; j++) {
-                int id = -1;
-                int dist = 1e9;
+        for (int i = 0; i < n; i++) {
+            int id = -1;
+            int dist = 1e9;
 
-                for (int c = 0; c < clusterColor.size(); c++) {
-                    int curDist = imageArray[i][j].dist(clusterColor[c]);
-                    if (curDist < dist) {
-                        dist = curDist;
-                        id = c;
-                    }
+            for (int c = 0; c < clusterColor.size(); c++) {
+                int curDist = colors[i].dist(clusterColor[c]);
+                if (curDist < dist) {
+                    dist = curDist;
+                    id = c;
                 }
-                assert(id != -1);
-
-                // dist is the closest dist
-                if (dist > worst) {
-                    worst = dist;
-                    worstI = i;
-                    worstJ = j;
-                }
-
-                clusterId[i][j] = id;
-                sum[id][0] += imageArray[i][j].r;
-                sum[id][1] += imageArray[i][j].g;
-                sum[id][2] += imageArray[i][j].b;
-                count[id]++;
             }
+            assert(id != -1);
+
+            // dist is the closest dist
+            if (dist > worst) {
+                worst = dist;
+                worstI = i;
+            }
+
+            clusterId[i] = id;
+            sum[id][0] += colors[i].r;
+            sum[id][1] += colors[i].g;
+            sum[id][2] += colors[i].b;
+            count[id]++;
         }
 
         // update cluster
-        for (int c = 0; c < clusterColor.size(); c++) {
-            assert(count[c] > 0);
-            clusterColor[c].r = round(sum[c][0] / (double)count[c]);
-            clusterColor[c].g = round(sum[c][1] / (double)count[c]);
-            clusterColor[c].b = round(sum[c][2] / (double)count[c]);
+        // iterating backwards - delete count[c] = 0 as we go
+        for (int c = clusterColor.size() - 1; c >= 0; c--) {
+            if (count[c] == 0) {
+                clusterColor.erase(clusterColor.begin() + c);
+            } else {
+                clusterColor[c].r = round(sum[c][0] / (double)count[c]);
+                clusterColor[c].g = round(sum[c][1] / (double)count[c]);
+                clusterColor[c].b = round(sum[c][2] / (double)count[c]);
+            }
         }
 
+        // If there are not enough cluster colors, add the currently worst represented color
         if (clusterColor.size() < k) {
-            // if there are not enough colors, add a new color!
-            // find the color that is the worst
+            clusterColor.push_back(colors[worstI]);
+        }
 
-            clusterColor.push_back(imageArray[worstI][worstJ]);
+        // At random, delete the least saturated color
+        if (rand() % 10 == 0 && clusterColor.size() > 1 && it != iterations - 1) {
+            int lowestInd = std::min_element(clusterColor.begin(), clusterColor.end(),
+                                             [](const auto &a, const auto &b) {
+                                                 auto ha = getHSL(a.r, a.g, a.b);
+                                                 auto hb = getHSL(b.r, b.g, b.b);
+                                                 return ha[1] < hb[1];
+                                             }) -
+                            clusterColor.begin();
+            clusterColor.erase(clusterColor.begin() + lowestInd);
         }
     }
 
-    auto result = imageArray;
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            result[i][j] = clusterColor[clusterId[i][j]];
-        }
+    std::vector<Color> result(n);
+    for (int i = 0; i < n; i++) {
+        result[i] = clusterColor[clusterId[i]];
     }
     return result;
 }
@@ -130,14 +128,14 @@ ImageArray voronoi(const ImageArray &imageArray, int k) {
     const int height = imageArray.size(), width = imageArray[0].size();
 
     // generate points
-    vector<vector<int>> points(k);
+    std::vector<std::vector<int>> points(k);
     for (int i = 0; i < k; i++) {
         points[i] = {rand() % height, rand() % width};
     }
 
     // multi-source bfs
     // keeps track of the parent of each pixel
-    vector<vector<int>> parent(height, vector<int>(width, -1));
+    std::vector<std::vector<int>> parent(height, std::vector<int>(width, -1));
     std::queue<std::pair<int, int>> Q;
     for (int p = 0; p < points.size(); p++) {
         const auto &point = points[p];
@@ -145,7 +143,7 @@ ImageArray voronoi(const ImageArray &imageArray, int k) {
         parent[point[0]][point[1]] = p;
     }
 
-    const vector<int> di = {0, 0, 1, -1}, dj = {-1, 1, 0, 0};
+    const std::vector<int> di = {0, 0, 1, -1}, dj = {-1, 1, 0, 0};
     while (Q.size()) {
         const auto at = Q.front();
         Q.pop();
@@ -159,11 +157,16 @@ ImageArray voronoi(const ImageArray &imageArray, int k) {
         }
     }
 
+    std::vector<Color> sourceColors;
+    for (int p = 0; p < points.size(); p++) {
+        sourceColors.push_back(imageArray[points[p][0]][points[p][1]]);
+    }
+
+    const auto kMeansColors = kMeans(sourceColors, 20, 1000);
     auto result = imageArray;
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            const int ind = parent[i][j];
-            result[i][j] = imageArray[points[ind][0]][points[ind][1]];
+            result[i][j] = kMeansColors[parent[i][j]];
         }
     }
     return result;
@@ -192,9 +195,8 @@ int main(int argc, char **argv) {
     stbi_image_free(inputImageData);
 
     printf("Processing image...\n");
-    int colors = 10000;
-    // auto outputImageArray = kMeans(inputImageArray, colors, colors + 10);
-    auto outputImageArray = voronoi(inputImageArray, colors);
+    int numPoints = 10000;
+    auto outputImageArray = voronoi(inputImageArray, numPoints);
 
     // Writing image
     printf("Writing image...\n");
