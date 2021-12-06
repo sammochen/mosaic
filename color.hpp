@@ -1,9 +1,8 @@
-// All custom type declarations
+#ifndef COLOR_HPP
+#define COLOR_HPP
 
 #include <stdint.h>
 #include <stdlib.h>
-
-#include <vector>
 
 struct Color {
     uint8_t r, g, b;
@@ -15,10 +14,11 @@ struct Color {
         return dr * dr + dg * dg + db * db;
     }
 
-    bool operator!=(const Color &color) const {
-        return r != color.r || g != color.g || b != color.b;
+    bool operator==(const Color &color) const {
+        return r == color.r && g == color.g && b == color.b;
     }
+
+    bool operator!=(const Color &color) const { return !operator==(color); }
 };
 
-using ImageArray = std::vector<std::vector<Color>>;
-using ImageData = uint8_t *;
+#endif
