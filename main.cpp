@@ -11,68 +11,71 @@
 const std::vector<int> di = {0, 0, 1, -1}, dj = {-1, 1, 0, 0};
 
 /**
- * kMeans accepts a vector of colors and finds a suitable representation using at most k colors
+ * Accepts a vector of colors and finds a suitable representation using at most numColors colors
  */
-std::vector<Color> kMeans(const std::vector<Color> &colors, int numColors, int iterations) {
+std::vector<Color> kMeans(const std::vector<Color> &colors, int numColors) {
+    const int maxIterations = 1000;
+
     const int n = colors.size();
     std::vector<int> clusterId(n, 0);               // id of ith color
     std::vector<Color> clusterColor = {{0, 0, 0}};  // color of kth cluster
 
-    for (int it = 0; it < iterations; it++) {
-        std::vector<Color> prevColor = clusterColor;
+    for (int it = 0; it < maxIterations; it++) {
+        const std::vector<Color> prevColor = clusterColor;
 
-        // choose closest cluster
+        // Tracks the average color of each cluster
         std::vector<std::vector<int>> sum(clusterColor.size(), std::vector<int>(3));  // rgb sum
         std::vector<int> count(clusterColor.size());
 
-        // find the worst-represented cell
+        // Tracks the worst-represented cell
         int worstDist = -1e9;
         int worstInd = -1;
 
         for (int i = 0; i < n; i++) {
-            int id = -1;
-            int dist = 1e9;
+            // Assign each cell to the closest cluster
+            int closestInd = -1;
+            int closestDist = 1e9;
 
             for (int c = 0; c < clusterColor.size(); c++) {
-                int curDist = colors[i].dist(clusterColor[c]);
-                if (curDist < dist) {
-                    dist = curDist;
-                    id = c;
+                int dist = colors[i].dist(clusterColor[c]);
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closestInd = c;
                 }
             }
-            assert(id != -1);
 
-            // dist is the closest dist
-            if (dist > worstDist) {
-                worstDist = dist;
+            clusterId[i] = closestInd;
+            sum[closestInd][0] += colors[i].r;
+            sum[closestInd][1] += colors[i].g;
+            sum[closestInd][2] += colors[i].b;
+            count[closestInd]++;
+
+            // Update the worst cell
+            if (closestDist > worstDist) {
+                worstDist = closestDist;
                 worstInd = i;
             }
-
-            clusterId[i] = id;
-            sum[id][0] += colors[i].r;
-            sum[id][1] += colors[i].g;
-            sum[id][2] += colors[i].b;
-            count[id]++;
         }
 
-        // update cluster
-        // iterating backwards - delete count[c] = 0 as we go
+        // Update cluster colors
         for (int c = clusterColor.size() - 1; c >= 0; c--) {
-            // Delete colors that are <0.1%
             if (count[c] * 1000 <= n) {
+                // Delete colors that are <0.1%
                 clusterColor.erase(clusterColor.begin() + c);
             } else {
+                // Update cluster color to be the average of the cells in the cluster
                 clusterColor[c].r = round(sum[c][0] / (double)count[c]);
                 clusterColor[c].g = round(sum[c][1] / (double)count[c]);
                 clusterColor[c].b = round(sum[c][2] / (double)count[c]);
             }
         }
 
-        // if there are not enough cluster colors, add the worst represented color
+        // Add the worst represented color
         if (clusterColor.size() < numColors) {
             clusterColor.push_back(colors[worstInd]);
         }
 
+        // Convergence
         if (prevColor == clusterColor) {
             printf("Converged at iteration %d\n", it);
             break;
@@ -86,12 +89,12 @@ std::vector<Color> kMeans(const std::vector<Color> &colors, int numColors, int i
     return result;
 }
 
-std::vector<std::vector<int>> voronoi(const ImageArray &imageArray,
+/**
+ * Given the width and height, returns a 2D parent matrix of which "space" each cell is in
+ */
+std::vector<std::vector<int>> voronoi(const int width, const int height,
                                       const std::vector<std::vector<int>> &points) {
-    const int height = imageArray.size(), width = imageArray[0].size();
-
-    // multi-source bfs
-    // keeps track of the parent of each pixel
+    // Multi-source BFS
     std::vector<std::vector<int>> parent(height, std::vector<int>(width, -1));
     std::queue<std::pair<int, int>> Q;
     for (int p = 0; p < points.size(); p++) {
@@ -115,25 +118,33 @@ std::vector<std::vector<int>> voronoi(const ImageArray &imageArray,
     return parent;
 }
 
+/**
+ * Given an image array, splits the matrix into numSpaces cells and then performs k-means on the
+ * colors of the cell.
+ * Returns the resulting mosaic image.
+ */
 ImageArray mosaic(const ImageArray &imageArray, const int numSpaces, const int numColors) {
     const int height = imageArray.size(), width = imageArray[0].size();
 
-    // generate points
+    // Generate random points
     std::vector<std::vector<int>> points(numSpaces);
     for (int i = 0; i < numSpaces; i++) {
         points[i] = {rand() % height, rand() % width};
     }
 
-    const auto parent = voronoi(imageArray, points);
+    const auto parent = voronoi(width, height, points);
 
+    // Retrieve the original colors of the spaces
     std::vector<Color> sourceColors;
     for (int p = 0; p < points.size(); p++) {
         sourceColors.push_back(imageArray[points[p][0]][points[p][1]]);
     }
 
-    const auto kMeansColors = kMeans(sourceColors, numColors, 1000);
-    auto result = std::vector<std::vector<Color>>(height, std::vector<Color>(width));
+    // Find the new colors
+    const auto kMeansColors = kMeans(sourceColors, numColors);
 
+    // Create the new image
+    auto result = std::vector<std::vector<Color>>(height, std::vector<Color>(width));
     for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             result[i][j] = kMeansColors[parent[i][j]];
